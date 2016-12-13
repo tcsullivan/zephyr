@@ -205,25 +205,25 @@ msg_t vexLiftTask(void *arg)
 
 	vexTaskRegister("lcdtask");
 
-	static int timeout = -1;
+	//static int timeout = -1;
 	while (!chThdShouldTerminate()) {
 		int actual = vexEncoderGet(kVexQuadEncoder_1);
 		int diff = liftTargetLoc - actual;
-		int speed;
+		int speed = 0; 
 		if (diff != 0) {
-			speed = 2 * diff;
-
-			if (timeout == -1)
+			/*if (timeout == -1)
 				timeout = 10;
 			else if (timeout > 0)
 				timeout--;
 			else
-				diff++;
+				diff *= 2;*/
+
+			speed = 2 * diff;
 		} else {
-			timeout = -1, speed = 0;
+			/*timeout = -1,*/ speed = 0;
 		}
 
-		vexLcdPrintf(0, 1, "%4d | %4d", actual, speed);
+		//vexLcdPrintf(0, 1, "A%02d T%02d S%d", actual, timeout, speed);
 		vexMotorSet(mLiftLowLeft,   speed);
 		vexMotorSet(mLiftHighLeft,  speed);
 		vexMotorSet(mLiftLowRight,  speed);
@@ -260,6 +260,15 @@ msg_t vexOperator(void *arg)
 			liftTargetLoc += 5;
 		else if (vexControllerGet(Btn5D))
 			liftTargetLoc -= 5;
+
+		if (vexControllerGet(Btn8D))
+			liftTargetLoc = 0;
+		else if (vexControllerGet(Btn8L))
+			liftTargetLoc = 30;
+		else if (vexControllerGet(Btn8R))
+			liftTargetLoc = 60;
+		else if (vexControllerGet(Btn8U))
+			liftTargetLoc = 90;
 
 		int claw = (vexControllerGet(Btn6U) ? 127 : (vexControllerGet(Btn6D) ? -127 : 0));
 		vexMotorSet(mClaw, claw);
