@@ -1,7 +1,10 @@
 #include <ch.h>     // needs for all ChibiOS programs
 #include <hal.h>    // hardware abstraction layer header
 #include <vex.h>    // vex library header
+
 #include "config.h" // motor and digital configs
+#include "lift.hpp" // lift system
+#include "claw.hpp"
 
 // missing stdlib functions
 extern "C" {
@@ -36,8 +39,8 @@ static char *getiton =
 // called once
 void vexUserSetup(void)
 {
-	vexDigitalConfigure(dConfig, DIG_CONFIG_SIZE(dConfig));
-	vexMotorConfigure(mConfig, MOT_CONFIG_SIZE(mConfig));
+	vexDigitalConfigure(const_cast<vexDigiCfg*>(dConfig), DIG_CONFIG_SIZE(dConfig));
+	vexMotorConfigure(const_cast<vexMotorCfg*>(mConfig), MOT_CONFIG_SIZE(mConfig));
 }
 
 static int autonToUse = 2;
@@ -49,9 +52,12 @@ static char *autons[3] = {
 
 void vexUserInit(void)
 {
+	lift::init(); // start the lift system
+	claw::init(); // start the claw system
+
 	// if in disabled autonomous, prompt for a selection
 	if (vexSpiGetControl() & (kFlagCompetitionSwitch | kFlagAutonomousMode)) {
-		int timeout = 100, sel = 0;
+		int timeout = 100, sel = autonToUse;
 		while (1) {
 			vexLcdPrintf(0, 0, "select auton: %2d", (timeout / 10));
 			if (timeout-- <= 0)
@@ -87,36 +93,21 @@ msg_t vexAutonomous(void *arg)
 	vexAudioPlayRtttl(getiton, 100, 0);
 
 	// drop the star
-	vexMotorSet(mClaw, 127);
-	vexSleep(200);
-	vexMotorSet(mClaw, -127);
-	vexSleep(500);
-	vexMotorSet(mClaw, 0);
-	vexSleep(500);
+	claw::unhook(); // 500ms
 
 	if (autonToUse == 0) {
 	
 	// pushy push push
 	vexMotorSet(mDriveLeft, 127);    // drive forward
 	vexMotorSet(mDriveRight, -127);
-	vexSleep(2500);
+	vexSleep(2200);
 	vexMotorSet(mDriveLeft, -127);   // back up
 	vexMotorSet(mDriveRight, 127);
-	vexSleep(1500);
-	vexMotorStopAll();
+	vexSleep(1200);
 
 	} else if( autonToUse == 1 ) {
 
-	vexMotorSet(mLiftLowLeft,   60);  // lift up
-	vexMotorSet(mLiftHighLeft,  60);
-	vexMotorSet(mLiftLowRight,  60);
-	vexMotorSet(mLiftHighRight, 60);
-	vexSleep(500);
-	vexMotorSet(mLiftLowLeft,   10);  // lift steady
-	vexMotorSet(mLiftHighLeft,  10);
-	vexMotorSet(mLiftLowRight,  10);
-	vexMotorSet(mLiftHighRight, 10);
-
+	lift::set(60);
 	vexMotorSet(mDriveLeft, 127);     // forward
 	vexMotorSet(mDriveRight, -127);
 	vexSleep(2800);
@@ -125,53 +116,54 @@ msg_t vexAutonomous(void *arg)
 	vexSleep(2300);
 	vexMotorSet(mDriveLeft, -80);     // turn
 	vexMotorSet(mDriveRight, -80);
-	vexMotorSet(mLiftLowLeft,   -60); // drop lift 
-	vexMotorSet(mLiftHighLeft,  -60);
-	vexMotorSet(mLiftLowRight,  -60);
-	vexMotorSet(mLiftHighRight, -60);
-	vexSleep(500);
-	vexMotorStopAll();
-
+	lift::set(0);
+	
 	} else if( autonToUse == 2 ) {
 
-	vexMotorSet(mLiftLowLeft,   -40); // lift down
-	vexMotorSet(mLiftHighLeft,  -40);
-	vexMotorSet(mLiftLowRight,  -40);
-	vexMotorSet(mLiftHighRight, -40);
+	lift::set(-10);
 	vexMotorSet(mDriveLeft, 127);     // straight
 	vexMotorSet(mDriveRight, -127);
-	vexSleep(2000);
+	vexSleep(1000);					  // 2200ms
 	vexMotorSet(mDriveLeft, 0);       // stop
 	vexMotorSet(mDriveRight, 0);
-	vexMotorSet(mClaw, 127);          // grab
-	vexSleep(500);
-	vexMotorSet(mClaw, 50);           // steady
-	vexMotorSet(mLiftLowLeft,   127); // lift
-	vexMotorSet(mLiftHighLeft,  127);
-	vexMotorSet(mLiftLowRight,  127);
-	vexMotorSet(mLiftHighRight, 127);
-	vexSleep(850);
-	vexMotorSet(mLiftLowLeft,   10);  // steady
-	vexMotorSet(mLiftHighLeft,  10);
-	vexMotorSet(mLiftLowRight,  10);
-	vexMotorSet(mLiftHighRight, 10);
-	vexMotorSet(mDriveLeft, 80);      // turn
-	vexMotorSet(mDriveRight, 80);
-	vexSleep(500);
+	claw::hold();					  // 3100ms
+	lift::set(90);
+	vexMotorSet(mDriveLeft, -80);      // turn
+	vexMotorSet(mDriveRight, -80);
+	vexSleep(500);					  // 3600ms
 	vexMotorSet(mDriveLeft, 127);     // forward
 	vexMotorSet(mDriveRight, -127);
-	vexSleep(1500);
+	vexSleep(1400);					  // 5000ms
 	vexMotorSet(mDriveLeft, 0);       // stop
 	vexMotorSet(mDriveRight, 0);
-	vexMotorSet(mClaw, -127);         // drop
-	vexSleep(1000);
+	claw::open();
+	vexSleep(500);					  // 5500ms
 	vexMotorSet(mDriveLeft, -40);     // back
 	vexMotorSet(mDriveRight, 40);
-	vexSleep(1000);
-	vexMotorStopAll();
+	vexSleep(800);					  // 6300ms
+
+	// DRAFT
+
+	vexMotorSet(mDriveLeft, -80);      // turn
+	vexMotorSet(mDriveRight, -80);
+	vexSleep(1400);					  // 7700ms
+	lift::set(0);
+	vexMotorSet(mDriveLeft, 127);     // straight
+	vexMotorSet(mDriveRight, -127);
+	vexSleep(800);					  // 8500ms
+	vexMotorSet(mDriveLeft, 0);       // stop
+	vexMotorSet(mDriveRight, 0);
+	lift::set(-10);
+	claw::hold();					  // 9400ms
+	lift::set(90);
+	vexSleep(400);					  // 9800ms
+	vexMotorSet(mDriveLeft, -80);     // turn
+	vexMotorSet(mDriveRight, -80);
+	vexSleep(1000);					  // 10,800ms
 
 	}
 
+	vexMotorStopAll();
 	while (1)
 		vexSleep(25);
 
@@ -183,7 +175,7 @@ msg_t vexLcdTask(void *arg)
 {
 	(void)arg;
 
-	vexTaskRegister("lcdtask");
+	vexTaskRegister("lcdt");
 
 	while (!chThdShouldTerminate()) {
 		vexLcdPrintf(0, 0, "%3.0f%% / %3.0f%%",
@@ -195,82 +187,43 @@ msg_t vexLcdTask(void *arg)
 	return (msg_t)0;
 }
 
-constexpr const int liftMaxSpeed = 60;
-static int liftTargetLoc = 0;
-
-static char waVexLiftTask[512];
-msg_t vexLiftTask(void *arg)
-{
-	(void)arg;
-
-	vexTaskRegister("lcdtask");
-
-	//static int timeout = -1;
-	while (!chThdShouldTerminate()) {
-		int actual = vexEncoderGet(kVexQuadEncoder_1);
-		int diff = liftTargetLoc - actual;
-		int speed = 0; 
-		if (diff != 0) {
-			/*if (timeout == -1)
-				timeout = 10;
-			else if (timeout > 0)
-				timeout--;
-			else
-				diff *= 2;*/
-
-			speed = 2 * diff;
-		} else {
-			/*timeout = -1,*/ speed = 0;
-		}
-
-		//vexLcdPrintf(0, 1, "A%02d T%02d S%d", actual, timeout, speed);
-		vexMotorSet(mLiftLowLeft,   speed);
-		vexMotorSet(mLiftHighLeft,  speed);
-		vexMotorSet(mLiftLowRight,  speed);
-		vexMotorSet(mLiftHighRight, speed);
-
-		vexSleep(50);
-	}
-
-	return (msg_t)0;
-}
-
 msg_t vexOperator(void *arg)
 {
 	(void)arg;
+
+	auto joy = reinterpret_cast<jsdata2*>(vexSpiGetJoystickDataPtr(1));
 
 	// Must call this
 	vexTaskRegister("operator");
 
 	chThdCreateStatic(waVexLcdTask, 512, NORMALPRIO - 1, vexLcdTask, nullptr);
-	chThdCreateStatic(waVexLiftTask, 512, NORMALPRIO - 1, vexLiftTask, nullptr);
 
 	// Run until asked to terminate
 	while (!chThdShouldTerminate()) {
-		if (vexControllerGet(Btn7R))
+		if (joy->Btn7R)
 			reset();
-
+	
 		int dy = vexControllerGet(Ch3);
-		int dx = -vexControllerGet(Ch4);
+		int dx = vexControllerGet(Ch4);
 
-		vexMotorSet(mDriveLeft, dy + dx);
-		vexMotorSet(mDriveRight, -dy + dx);
+		vexMotorSet(mDriveLeft, dy - dx);
+		vexMotorSet(mDriveRight, -dy - dx);
 
-		if (vexControllerGet(Btn5U))
-			liftTargetLoc += 5;
-		else if (vexControllerGet(Btn5D))
-			liftTargetLoc -= 5;
+		if (joy->Btn5U)
+			lift::raise();
+		else if (joy->Btn5D)
+			lift::lower();
 
-		if (vexControllerGet(Btn8D))
-			liftTargetLoc = 0;
-		else if (vexControllerGet(Btn8L))
-			liftTargetLoc = 30;
-		else if (vexControllerGet(Btn8R))
-			liftTargetLoc = 60;
-		else if (vexControllerGet(Btn8U))
-			liftTargetLoc = 90;
+		if (joy->Btn8D)
+			lift::set(0);
+		else if (joy->Btn8L)
+			lift::set(30);
+		else if (joy->Btn8R)
+			lift::set(60);
+		else if (joy->Btn8U)
+			lift::set(90);
 
-		int claw = (vexControllerGet(Btn6U) ? 127 : (vexControllerGet(Btn6D) ? -127 : 0));
+		int claw = (joy->Btn6U ? 127 : (joy->Btn6D ? -127 : 0));
 		vexMotorSet(mClaw, claw);
 
 		// Don't hog cpu
